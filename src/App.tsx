@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useEffect } from 'react';
+import { supabase } from './lib/supabase';
 import CompanyListPage from './pages/CompanyListPage';
 import AddCompanyPage from './pages/AddCompanyPage';
 import HowItWorksPage from './pages/HowItWorksPage';
@@ -20,7 +22,8 @@ import {
   HelpCircle,
   Menu,
   X,
-  User
+  User,
+  LogOut
 } from 'lucide-react';
 
 function App() {
@@ -30,6 +33,64 @@ function App() {
   const [message, setMessage] = useState('');
   const [aiResponse, setAiResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userFullName, setUserFullName] = useState<string | null>(null);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+
+  // Check authentication status
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.user) {
+          setIsLoggedIn(true);
+          
+          // Try to get user's full name from profiles table
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', session.user.id)
+            .single();
+          
+          setUserFullName(profile?.full_name || null);
+        } else {
+          setIsLoggedIn(false);
+          setUserFullName(null);
+        }
+      } catch (error) {
+        console.error('Error checking auth status:', error);
+        setIsLoggedIn(false);
+        setUserFullName(null);
+      } finally {
+        setIsLoadingAuth(false);
+      }
+    };
+
+    checkAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setIsLoggedIn(true);
+        
+        // Try to get user's full name from profiles table
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', session.user.id)
+          .single();
+        
+        setUserFullName(profile?.full_name || null);
+      } else {
+        setIsLoggedIn(false);
+        setUserFullName(null);
+      }
+      setIsLoadingAuth(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const services = [
     { name: 'Murár', icon: Hammer, color: 'from-amber-500 to-orange-600' },
@@ -154,17 +215,28 @@ const response = await fetch(`${import.meta.env.VITE_SUPABASE_FUNCTION_URL}/ai-a
             <div className="hidden md:block">
               <div className="ml-10 flex items-baseline space-x-8">
                 {menuItems.map((item, index) => (
-                  <a
+                  <div
                     key={index}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleMenuClick(item.action);
-                    }}
-                    className="text-gray-700 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors duration-200 hover:bg-blue-50 rounded-lg"
+                    className="relative"
                   >
-                    {item.label}
-                  </a>
+                    <a
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleMenuClick(item.action);
+                      }}
+                      className="text-gray-700 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors duration-200 hover:bg-blue-50 rounded-lg flex items-center gap-2"
+                    >
+                      {item.action === 'myAccount' && isLoggedIn && !isLoadingAuth ? (
+                        <span className="flex items-center gap-2 bg-green-100 text-green-800 rounded-full px-3 py-1 text-sm font-medium">
+                          <User size={14} />
+                          {userFullName || 'Prihlásený'}
+                        </span>
+                      ) : (
+                        item.label
+                      )}
+                    </a>
+                  </div>
                 ))}
                 <a
                   href="#"
@@ -196,18 +268,29 @@ const response = await fetch(`${import.meta.env.VITE_SUPABASE_FUNCTION_URL}/ai-a
           <div className="md:hidden bg-white/95 backdrop-blur-md border-t">
             <div className="px-2 pt-2 pb-3 space-y-1">
               {menuItems.map((item, index) => (
-                <a
+                <div
                   key={index}
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleMenuClick(item.action);
-                    setMobileMenuOpen(false);
-                  }}
-                  className="text-gray-700 hover:text-blue-600 block px-3 py-2 text-base font-medium hover:bg-blue-50 rounded-lg transition-colors duration-200"
+                  className="relative"
                 >
-                  {item.label}
-                </a>
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleMenuClick(item.action);
+                      setMobileMenuOpen(false);
+                    }}
+                    className="text-gray-700 hover:text-blue-600 block px-3 py-2 text-base font-medium hover:bg-blue-50 rounded-lg transition-colors duration-200"
+                  >
+                    {item.action === 'myAccount' && isLoggedIn && !isLoadingAuth ? (
+                      <span className="flex items-center gap-2 bg-green-100 text-green-800 rounded-full px-3 py-1 text-sm font-medium">
+                        <User size={14} />
+                        {userFullName || 'Prihlásený'}
+                      </span>
+                    ) : (
+                      item.label
+                    )}
+                  </a>
+                </div>
               ))}
               <a
                 href="#"
