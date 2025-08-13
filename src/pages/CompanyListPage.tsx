@@ -80,14 +80,38 @@ function CompanyListPage({ selectedService, onNavigateBack }: CompanyListPagePro
         qy = qy.gte('created_at', today.toISOString());
       }
 
+      // Apply additional filters
+      if (activeFilters.includes('has-reviews')) {
+        qy = qy.gt('review_count', 0);
+      }
+
+      if (activeFilters.includes('new-companies')) {
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        qy = qy.gte('created_at', weekAgo.toISOString());
+      }
       // Apply sorting
       switch (sortBy) {
         case 'rating':
-          qy = qy.order('average_rating', { ascending: false, nullsLast: true });
+          qy = qy.order('average_rating', { ascending: false, nullsLast: true })
+               .order('review_count', { ascending: false, nullsLast: true });
+          break;
+        case 'newest':
+          qy = qy.order('created_at', { ascending: false });
+          break;
+        case 'name':
+          qy = qy.order('name', { ascending: true });
+          break;
+        case 'reviews':
+          qy = qy.order('review_count', { ascending: false, nullsLast: true })
+               .order('average_rating', { ascending: false, nullsLast: true });
           break;
         case 'best-match':
         default:
-          qy = qy.order('created_at', { ascending: false });
+          // Best match: prioritize companies with reviews and good ratings
+          qy = qy.order('average_rating', { ascending: false, nullsLast: true })
+               .order('review_count', { ascending: false, nullsLast: true })
+               .order('created_at', { ascending: false });
           break;
       }
 
@@ -107,15 +131,18 @@ function CompanyListPage({ selectedService, onNavigateBack }: CompanyListPagePro
   };
 
   const quickFilters = [
-    { id: 'verified', label: 'Overené', icon: Shield },
     { id: 'rating-4plus', label: '★ 4+', icon: Star },
+    { id: 'has-reviews', label: 'S recenziami', icon: MessageSquare },
     { id: 'today', label: 'Dnes', icon: Calendar }
+    { id: 'new-companies', label: 'Nové (7 dní)', icon: Clock }
   ];
 
   const sortOptions = [
     { value: 'best-match', label: 'Najlepšie pre mňa (AI)' },
     { value: 'rating', label: 'Hodnotenie' },
-    { value: 'newest', label: 'Najnovšie' }
+    { value: 'newest', label: 'Najnovšie' },
+    { value: 'name', label: 'Názov (A-Z)' },
+    { value: 'reviews', label: 'Počet recenzií' }
   ];
 
   const toggleFilter = (filterId: string) => {
