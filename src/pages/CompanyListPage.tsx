@@ -48,7 +48,7 @@ function CompanyListPage({ selectedService, onNavigateBack }: CompanyListPagePro
   // Load companies from Supabase
   useEffect(() => {
     loadCompanies();
-  }, [selectedService]);
+  }, [selectedService, searchQuery, activeFilters, sortBy]);
 
   const loadCompanies = async () => {
     try {
@@ -58,11 +58,37 @@ function CompanyListPage({ selectedService, onNavigateBack }: CompanyListPagePro
       let qy = supabase
         .from("companies_with_rating")
         .select("id,created_at,name,description,email,phone,website,location,services,status,user_id,average_rating,review_count")
-        .eq("status", "approved")
-        .order('created_at', { ascending: false });
+        .eq("status", "approved");
 
       if (selectedService) {
         qy = qy.contains("services", [selectedService]);
+      }
+
+      // Apply search query
+      if (searchQuery.trim()) {
+        qy = qy.or(`name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,location.ilike.%${searchQuery}%`);
+      }
+
+      // Apply filters
+      if (activeFilters.includes('rating-4plus')) {
+        qy = qy.gte('average_rating', 4);
+      }
+
+      if (activeFilters.includes('today')) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        qy = qy.gte('created_at', today.toISOString());
+      }
+
+      // Apply sorting
+      switch (sortBy) {
+        case 'rating':
+          qy = qy.order('average_rating', { ascending: false, nullsLast: true });
+          break;
+        case 'best-match':
+        default:
+          qy = qy.order('created_at', { ascending: false });
+          break;
       }
 
       const { data: companiesData, error: companiesError } = await qy;
@@ -83,17 +109,13 @@ function CompanyListPage({ selectedService, onNavigateBack }: CompanyListPagePro
   const quickFilters = [
     { id: 'verified', label: 'Overené', icon: Shield },
     { id: 'rating-4plus', label: '★ 4+', icon: Star },
-    { id: 'today', label: 'Dnes', icon: Calendar },
-    { id: 'escrow', label: 'Escrow', icon: Shield },
-    { id: 'budget-50', label: 'Do 50 €', icon: Euro }
+    { id: 'today', label: 'Dnes', icon: Calendar }
   ];
 
   const sortOptions = [
     { value: 'best-match', label: 'Najlepšie pre mňa (AI)' },
     { value: 'rating', label: 'Hodnotenie' },
-    { value: 'price', label: 'Cena' },
-    { value: 'response-time', label: 'Rýchlosť reakcie' },
-    { value: 'distance', label: 'Vzdialenosť' }
+    { value: 'newest', label: 'Najnovšie' }
   ];
 
   const toggleFilter = (filterId: string) => {
@@ -111,7 +133,17 @@ function CompanyListPage({ selectedService, onNavigateBack }: CompanyListPagePro
   const clearAllFilters = () => {
     setActiveFilters([]);
     setSearchQuery('');
+    setSortBy('best-match');
   };
+
+  // Debounce search query to avoid too many API calls
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      // The search will be triggered by the main useEffect above
+    }, 300);
+    
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-100">
@@ -220,7 +252,14 @@ function CompanyListPage({ selectedService, onNavigateBack }: CompanyListPagePro
                 'Načítavam firmy...'
               ) : (
                 <>
-                  Zodpovedá <span className="font-semibold">{companies.length} firmám</span> • 
+                  Zodpovedá <span className="font-semibold">{companies.length} firmám</span>
+                  {searchQuery && (
+                    <> pre "<span className="font-semibold">{searchQuery}</span>"</>
+                  )}
+                  {activeFilters.length > 0 && (
+                    <> s {activeFilters.length} filtrami</>
+                  )}
+                   • 
                 </>
               )}
               priem. odpoveď <span className="font-semibold">23 min</span>
@@ -312,12 +351,23 @@ function CompanyListPage({ selectedService, onNavigateBack }: CompanyListPagePro
             <div className="bg-white/70 backdrop-blur-md rounded-2xl p-8 max-w-md mx-auto">
               <Shield className="text-gray-400 mx-auto mb-4" size={48} />
               <h3 className="text-xl font-semibold text-gray-600 mb-2">
-                Žiadne firmy
+                {searchQuery || activeFilters.length > 0 ? 'Žiadne výsledky' : 'Žiadne firmy'}
               </h3>
               <p className="text-gray-500 mb-4">
-                {selectedService 
-                  ? `Zatiaľ nie sú registrované žiadne firmy pre službu "${selectedService}"`
-                  : 'Zatiaľ nie sú registrované žiadne firmy'
+                {searchQuery || activeFilters.length > 0 ? (
+                  <>
+                    Skúste zmeniť vyhľadávací výraz alebo filtre
+                    <button
+                      onClick={clearAllFilters}
+                      className="block mx-auto mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+                    >
+                      Vymazať filtre
+                    </button>
+                  </>
+                ) : selectedService ? (
+                  `Zatiaľ nie sú registrované žiadne firmy pre službu "${selectedService}"`
+                ) : (
+                  'Zatiaľ nie sú registrované žiadne firmy'
                 }
               </p>
             </div>
@@ -362,12 +412,18 @@ function CompanyListPage({ selectedService, onNavigateBack }: CompanyListPagePro
                       
                       {/* Rating Placeholder - TODO: Add reviews system */}
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="flex items-center">
-                          {renderStars(company.average_rating || 0)}
-                          <span className="ml-1 text-gray-500 text-sm">
-                            {company.average_rating ? company.average_rating.toFixed(1) : 'N/A'} ({company.review_count || 0})
-                          </span>
-                        </div>
+                        {company.average_rating && company.average_rating > 0 ? (
+                          <div className="flex items-center">
+                            {renderStars(company.average_rating)}
+                            <span className="ml-1 text-gray-500 text-sm">
+                              {company.average_rating.toFixed(1)} ({company.review_count || 0})
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center">
+                            <span className="text-gray-400 text-sm">Bez hodnotenia</span>
+                          </div>
+                        )}
                       </div>
                       
                       {/* Location */}
@@ -378,7 +434,7 @@ function CompanyListPage({ selectedService, onNavigateBack }: CompanyListPagePro
                         </div>
                         <div className="flex items-center gap-1">
                           <Clock size={14} />
-                          Nová firma
+                          {new Date(company.created_at).toLocaleDateString('sk-SK')}
                         </div>
                       </div>
                     </div>
@@ -386,9 +442,16 @@ function CompanyListPage({ selectedService, onNavigateBack }: CompanyListPagePro
                   
                   {/* Status Badge */}
                   <div className="text-right">
-                    <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                      Overená
-                    </span>
+                    <div className="flex flex-col gap-1">
+                      <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                        Overená
+                      </span>
+                      {company.average_rating && company.average_rating >= 4 && (
+                        <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                          ★ 4+ hodnotenie
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
