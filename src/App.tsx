@@ -232,6 +232,11 @@ const response = await fetch(`${import.meta.env.VITE_SUPABASE_FUNCTION_URL}/ai-a
                           <User size={14} />
                           {userFullName || 'Prihlásený'}
                         </span>
+                      ) : item.action === 'myAccount' && !isLoggedIn && !isLoadingAuth ? (
+                        <span className="flex items-center gap-2 bg-red-100 text-red-800 rounded-full px-3 py-1 text-sm font-medium">
+                          <LogOut size={14} />
+                          Odhlásený
+                        </span>
                       ) : (
                         item.label
                       )}
@@ -285,6 +290,11 @@ const response = await fetch(`${import.meta.env.VITE_SUPABASE_FUNCTION_URL}/ai-a
                       <span className="flex items-center gap-2 bg-green-100 text-green-800 rounded-full px-3 py-1 text-sm font-medium">
                         <User size={14} />
                         {userFullName || 'Prihlásený'}
+                      </span>
+                    ) : item.action === 'myAccount' && !isLoggedIn && !isLoadingAuth ? (
+                      <span className="flex items-center gap-2 bg-red-100 text-red-800 rounded-full px-3 py-1 text-sm font-medium">
+                        <LogOut size={14} />
+                        Odhlásený
                       </span>
                     ) : (
                       item.label
